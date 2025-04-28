@@ -1,0 +1,768 @@
+---
+title: "Practical_2_Final"
+author: "Prasanth Gururaj"
+date: "2025-04-27"
+output: html_document
+---
+
+```{r}
+#loading the libraries used in the Practical homework 
+
+library(e1071)
+library(caret)
+library(tidyverse)
+library(tictoc)
+library(ggplot2)
+```
+
+
+```{r}
+# Splitting the dataset into training and testing sets
+
+clean_data <- read_csv("D:/University_Course_work/StatsML-2/Practical_Home_work_2/cleaned_data_set_for_svm.csv") %>%
+  mutate(DIABETICEV = as.factor(DIABETICEV))
+
+set.seed(123)
+train_index <- createDataPartition(clean_data$DIABETICEV, p = 0.8, list = FALSE)
+train_data <- clean_data[train_index, ]
+test_data <- clean_data[-train_index, ]
+
+```
+
+
+```{r}
+# Down sampling the training data to balance the distribution of the target variable
+
+train_data_down <- downSample(x = train_data %>% select(-DIABETICEV), 
+                              y = train_data$DIABETICEV, 
+                              yname = "DIABETICEV")
+
+table(train_data_down$DIABETICEV)
+```
+
+
+```{r}
+# Visualizing the relationship between BMI and fruit consumption by diabetes status
+
+bmi_fruit_plot <-ggplot(train_data_down, aes(x = BMICALC, y = FRUTNO, color = as.factor(DIABETICEV))) +
+  geom_point(alpha = 0.5, size = 2) +
+  scale_color_manual(
+    values = c("1" = "blue", "2" = "red"),
+    labels = c("No Diabetes", "Yes Diabetes")
+  ) +
+  labs(
+    title = "BMI vs Fruit Consumption",
+    x = "BMI (BMICALC)",
+    y = "Fruit Consumption (FRUTNO)",
+    color = "Diabetes Status"
+  ) +
+  theme_minimal()
+
+print(bmi_fruit_plot)
+ggsave("BMI_vs_FruitConsumption.png", plot = bmi_fruit_plot, width = 8, height = 6, dpi = 300)
+
+```
+
+
+```{r}
+# Visualizing the distribution of fruit consumption by diabetes status
+
+fruit_distribution_plot <-ggplot(train_data_down, aes(x = FRUTNO, fill = as.factor(DIABETICEV))) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(
+    values = c("1" = "pink", "2" = "blue"),
+    labels = c("No Diabetes", "Yes Diabetes")
+  ) +
+  labs(
+    title = "Fruit Consumption Distribution by Diabetes Status",
+    x = "Fruit Consumption (FRUTNO)",
+    fill = "Diabetes Status"
+  ) +
+  theme_minimal()
+
+print(fruit_distribution_plot)
+ggsave("FruitConsumption_Distribution.png", plot = fruit_distribution_plot, width = 8, height = 6, dpi = 300)
+
+
+```
+
+
+Models with train data without down sampling and checking on how the accuracy and predictions between the models.
+
+
+1. Linear model
+```{r}
+# Training a linear SVM model with cost = 0.1 and evaluating training time
+
+tic.clearlog()
+
+tic("Training SVM Model")
+
+simple_svm <- svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data,
+  kernel = "linear",
+  cost = 0.1,
+  scale = TRUE
+)
+
+toc(log = TRUE)
+
+timing_log <- tic.log(format = FALSE)
+
+training_time_sec <- timing_log[[1]]$toc - timing_log[[1]]$tic
+
+cat(sprintf("Training Time: %.3f seconds\n", training_time_sec))
+
+```
+
+
+```{r}
+# Predicting and evaluating the linear SVM model on training and test data
+
+train_pred <- predict(simple_svm, train_data)
+test_pred <- predict(simple_svm, test_data)
+
+train_error_rate <- mean(train_pred != train_data$DIABETICEV)
+train_accuracy <- 1 - train_error_rate
+
+test_error_rate <- mean(test_pred != test_data$DIABETICEV)
+test_accuracy <- 1 - test_error_rate
+
+cat(sprintf("\nTraining Error Rate: %.4f (%.2f%%)\n", train_error_rate, train_error_rate * 100))
+cat(sprintf("Training Accuracy: %.4f (%.2f%%)\n", train_accuracy, train_accuracy * 100))
+cat(sprintf("\nTest Error Rate: %.4f (%.2f%%)\n", test_error_rate, test_error_rate * 100))
+cat(sprintf("Test Accuracy: %.4f (%.2f%%)\n", test_accuracy, test_accuracy * 100))
+
+test_pred_factor <- factor(test_pred, levels = c(1, 2), 
+                            labels = c("No Diabetes", "Yes Diabetes"))
+test_actual_factor <- factor(test_data$DIABETICEV, levels = c(1, 2),
+                              labels = c("No Diabetes", "Yes Diabetes"))
+
+conf_matrix <- confusionMatrix(test_pred_factor, test_actual_factor)
+
+print("\nConfusion Matrix:")
+print(conf_matrix$table)
+
+cat("\nAccuracy:", round(conf_matrix$overall["Accuracy"] * 100, 2), "%\n")
+
+```
+2. Radial model 
+```{r}
+# Training a radial SVM model with cost = 0.1 and gamma = 0.01 and evaluating training time
+
+tic.clearlog()
+
+tic("Training SVM Model - Radial Kernel")
+
+simple_svm_radial <- svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data,
+  kernel = "radial",
+  cost = 0.1,
+  gamma = 0.01,
+  scale = TRUE
+)
+
+toc(log = TRUE)
+
+timing_log_radial <- tic.log(format = FALSE)
+training_time_sec_radial <- timing_log_radial[[1]]$toc - timing_log_radial[[1]]$tic
+
+cat(sprintf("Radial Kernel Training Time: %.3f seconds\n", training_time_sec_radial))
+
+
+```
+
+
+
+
+
+```{r}
+# Predicting and evaluating the radial SVM model on training and test data
+
+train_pred_radial <- predict(simple_svm_radial, newdata = train_data)
+test_pred_radial <- predict(simple_svm_radial, newdata = test_data)
+
+train_filtered <- train_data[train_data$DIABETICEV %in% c(1, 2), ]
+train_pred_filtered <- train_pred_radial[train_data$DIABETICEV %in% c(1, 2)]
+test_filtered <- test_data[test_data$DIABETICEV %in% c(1, 2), ]
+test_pred_filtered <- test_pred_radial[test_data$DIABETICEV %in% c(1, 2)]
+
+train_error <- mean(train_pred_filtered != train_filtered$DIABETICEV)
+train_accuracy <- 1 - train_error
+
+test_error <- mean(test_pred_filtered != test_filtered$DIABETICEV)
+test_accuracy <- 1 - test_error
+
+cat("\nTRAINING SET METRICS (No/Yes Diabetes only):\n")
+cat(sprintf("Error Rate: %.3f (%.2f%%)\n", train_error, train_error * 100))
+cat(sprintf("Accuracy: %.3f (%.2f%%)\n", train_accuracy, train_accuracy * 100))
+
+cat("\nTEST SET METRICS (No/Yes Diabetes only):\n")
+cat(sprintf("Error Rate: %.3f (%.2f%%)\n", test_error, test_error * 100))
+cat(sprintf("Accuracy: %.3f (%.2f%%)\n", test_accuracy, test_accuracy * 100))
+
+conf_test <- table(Predicted = test_pred_filtered, Actual = test_filtered$DIABETICEV)
+
+cat("\nCONFUSION MATRIX (TEST SET):\n")
+print(conf_test)
+
+tp_no <- conf_test[1, 1]
+fp_no <- conf_test[1, 2]
+fn_no <- conf_test[2, 1]
+precision_no <- tp_no / (tp_no + fp_no)
+recall_no <- tp_no / (tp_no + fn_no)
+
+tp_yes <- conf_test[2, 2]
+fp_yes <- conf_test[2, 1]
+fn_yes <- conf_test[1, 2]
+precision_yes <- tp_yes / (tp_yes + fp_yes)
+recall_yes <- tp_yes / (tp_yes + fn_yes)
+
+cat("\nPRECISION AND RECALL:\n")
+cat("No Diabetes (1):\n")
+cat(sprintf("  Precision: %.3f\n", precision_no))
+cat(sprintf("  Recall: %.3f\n", recall_no))
+cat("Yes Diabetes (2):\n")
+cat(sprintf("  Precision: %.3f\n", precision_yes))
+cat(sprintf("  Recall: %.3f\n", recall_yes))
+
+```
+
+3. Polynomial Model
+
+```{r}
+#Polynomial model with cost 0.1 and degree as 3 
+
+tic.clearlog()
+
+tic("Training SVM Model - Polynomial Kernel")
+
+simple_svm_poly <- svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data,
+  kernel = "polynomial",
+  cost = 0.1,
+  scale = TRUE,
+  degree = 3 
+)
+
+toc(log = TRUE)
+
+timing_log_poly <- tic.log(format = FALSE)
+training_time_sec_poly <- timing_log_poly[[1]]$toc - timing_log_poly[[1]]$tic
+
+cat(sprintf("Polynomial Kernel Training Time: %.3f seconds\n", training_time_sec_poly))
+```
+
+
+```{r}
+# Predicting and evaluating the polynomial SVM model on training and test data
+
+train_pred_poly <- predict(simple_svm_poly, newdata = train_data)
+test_pred_poly <- predict(simple_svm_poly, newdata = test_data)
+
+conf_train_poly <- table(Predicted = train_pred_poly, Actual = train_data$DIABETICEV)
+conf_test_poly <- table(Predicted = test_pred_poly, Actual = test_data$DIABETICEV)
+
+calculate_metrics <- function(conf_mat) {
+  TP <- conf_mat["1", "1"]
+  FP <- conf_mat["1", "2"]
+  FN <- conf_mat["2", "1"]
+  
+  Accuracy <- (TP) / sum(conf_mat)
+  Precision <- TP / (TP + FP)
+  Recall <- TP / (TP + FN)
+  
+  return(list(Accuracy = Accuracy, Precision = Precision, Recall = Recall))
+}
+
+train_metrics_poly <- calculate_metrics(conf_train_poly)
+test_metrics_poly <- calculate_metrics(conf_test_poly)
+
+train_error_poly <- mean(train_pred_poly != train_data$DIABETICEV)
+test_error_poly <- mean(test_pred_poly != test_data$DIABETICEV)
+
+cat(sprintf("Training Accuracy: %.3f\n", train_metrics_poly$Accuracy))
+cat(sprintf("Training Precision: %.3f\n", train_metrics_poly$Precision))
+cat(sprintf("Training Recall: %.3f\n", train_metrics_poly$Recall))
+cat(sprintf("Training Error Rate: %.3f\n\n", train_error_poly))
+
+cat(sprintf("Test Accuracy: %.3f\n", test_metrics_poly$Accuracy))
+cat(sprintf("Test Precision: %.3f\n", test_metrics_poly$Precision))
+cat(sprintf("Test Recall: %.3f\n", test_metrics_poly$Recall))
+cat(sprintf("Test Error Rate: %.3f\n", test_error_poly))
+
+```
+All the three models are givivng the same result for the data which was not down sampled , because the data is skewed towards no diabetic condition. Now I tried with down sampled data with different cost functions and other parameters.
+
+Linear ,radial and polynomial kernel with different parameters and howb the model building is changing 
+
+1.Linear MOdel
+```{r}
+# Tuning a linear SVM model over different cost values, selecting the best model,
+# and evaluating performance with accuracy, error rates, precision, recall, and confusion matrices
+
+cost_values <- c(0.01, 0.05, 0.1, 0.5, 5, 15)
+
+tic("Tuning Linear Kernel SVM")
+
+set.seed(123)
+tune_out_linear <- tune.svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data_down,
+  kernel = "linear",
+  cost = cost_values,
+  scale = TRUE
+)
+
+toc(log = FALSE)
+
+
+summary(tune_out_linear)
+
+```
+
+
+```{r}
+best_linear_model <- tune_out_linear$best.model
+cat("Best Cost (Linear):", best_linear_model$cost, "\n")
+
+train_pred_linear <- predict(best_linear_model, newdata = train_data_down)
+test_pred_linear <- predict(best_linear_model, newdata = test_data)
+
+train_cm_linear <- confusionMatrix(train_pred_linear, train_data_down$DIABETICEV)
+test_cm_linear <- confusionMatrix(test_pred_linear, test_data$DIABETICEV)
+
+train_error_linear <- 1 - train_cm_linear$overall['Accuracy']
+test_error_linear <- 1 - test_cm_linear$overall['Accuracy']
+
+cat("\n===== Linear SVM Results =====\n")
+cat("Train Accuracy:", train_cm_linear$overall['Accuracy'], "\n")
+cat("Test Accuracy:", test_cm_linear$overall['Accuracy'], "\n")
+cat("Train Error:", train_error_linear, "\n")
+cat("Test Error:", test_error_linear, "\n")
+cat("Test Precision:", test_cm_linear$byClass['Precision'], "\n")
+cat("Test Recall:", test_cm_linear$byClass['Recall'], "\n\n")
+
+cat("Train Confusion Matrix:\n")
+print(train_cm_linear$table)
+cat("\nTest Confusion Matrix:\n")
+print(test_cm_linear$table)
+
+
+```
+
+```{r}
+train_data_two_features <- train_data_down[, c("BMICALC", "PIZZANO", "DIABETICEV")]
+
+set.seed(123)
+svm_linear_2feat <- svm(
+  DIABETICEV ~ BMICALC + PIZZANO,
+  data = train_data_two_features,
+  kernel = "linear",
+  cost = 0.5,
+  scale = TRUE
+)
+
+x_range <- seq(min(train_data_two_features$BMICALC) - 1, max(train_data_two_features$BMICALC) + 1, length = 300)
+y_range <- seq(min(train_data_two_features$PIZZANO) - 1, max(train_data_two_features$PIZZANO) + 1, length = 300)
+grid_linear <- expand.grid(BMICALC = x_range, PIZZANO = y_range)
+
+grid_predictions_linear <- predict(svm_linear_2feat, grid_linear)
+grid_linear$Prediction <- as.factor(grid_predictions_linear)
+
+decision_boundary_linear <- ggplot() +
+  geom_tile(data = grid_linear, aes(x = BMICALC, y = PIZZANO, fill = Prediction), alpha = 0.4) +
+  geom_contour(data = grid_linear, aes(x = BMICALC, y = PIZZANO, z = as.numeric(Prediction)), color = "black", breaks = 1.5) +
+  geom_point(data = train_data_two_features, aes(x = BMICALC, y = PIZZANO, color = as.factor(DIABETICEV)), size = 2) +
+  scale_fill_manual(values = c("blue", "red")) +
+  scale_color_manual(values = c("green", "red")) +
+  labs(
+    title = "Linear SVM Decision Boundary",
+    x = "BMICALC",
+    y = "PIZZANO",
+    fill = "Predicted",
+    color = "Actual"
+  ) +
+  theme_minimal(base_size = 15)
+
+print(decision_boundary_linear)
+
+ggsave("DecisionBoundary_LinearSVM.png", plot = decision_boundary_linear, width = 8, height = 6, dpi = 300)
+```
+
+
+2.radial Model
+
+```{r}
+# Tuning a radial kernel SVM model over different cost and gamma values, selecting the best model,
+# and evaluating performance using accuracy, error rates, precision, recall, and confusion matrices
+
+cost_values <- c(0.01, 0.05, 0.1, 0.5, 5)
+gamma_values <- c(0.001, 0.01, 0.1, 0.5, 1, 2)
+
+tic("Tuning Radial Kernel SVM")
+
+set.seed(123)
+tune_out_radial <- tune.svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data_down,
+  kernel = "radial",
+  cost = cost_values,
+  gamma = gamma_values,
+  scale = TRUE
+)
+
+toc(log = FALSE)
+
+summary(tune_out_radial)
+
+```
+
+```{r}
+
+best_radial_model <- tune_out_radial$best.model
+cat("Best Cost (Radial):", best_radial_model$cost, "\n")
+cat("Best Gamma (Radial):", best_radial_model$gamma, "\n")
+
+train_pred_radial <- predict(best_radial_model, newdata = train_data_down)
+test_pred_radial <- predict(best_radial_model, newdata = test_data)
+
+train_cm_radial <- confusionMatrix(train_pred_radial, train_data_down$DIABETICEV)
+test_cm_radial <- confusionMatrix(test_pred_radial, test_data$DIABETICEV)
+
+train_error_radial <- 1 - train_cm_radial$overall['Accuracy']
+test_error_radial <- 1 - test_cm_radial$overall['Accuracy']
+
+cat("\n===== Radial SVM Results =====\n")
+cat("Train Accuracy:", train_cm_radial$overall['Accuracy'], "\n")
+cat("Test Accuracy:", test_cm_radial$overall['Accuracy'], "\n")
+cat("Train Error:", train_error_radial, "\n")
+cat("Test Error:", test_error_radial, "\n")
+cat("Test Precision:", test_cm_radial$byClass['Precision'], "\n")
+cat("Test Recall:", test_cm_radial$byClass['Recall'], "\n\n")
+
+cat("Train Confusion Matrix:\n")
+print(train_cm_radial$table)
+cat("\nTest Confusion Matrix:\n")
+print(test_cm_radial$table)
+
+
+```
+
+
+```{r}
+
+# Train a Radial Kernel SVM using BMICALC and PIZZANO, create a grid for visualization, and plot the decision boundary along with actual points
+
+train_data_two_features <- train_data_down[, c("BMICALC", "PIZZANO", "DIABETICEV")]
+
+set.seed(123)
+svm_radial_2feat <- svm(
+  DIABETICEV ~ BMICALC + PIZZANO,
+  data = train_data_two_features,
+  kernel = "radial",
+  cost = 5,
+  gamma = 0.1,
+  scale = TRUE
+)
+
+x_range <- seq(min(train_data_two_features$BMICALC) - 1, max(train_data_two_features$BMICALC) + 1, length = 300)
+y_range <- seq(min(train_data_two_features$PIZZANO) - 1, max(train_data_two_features$PIZZANO) + 1, length = 300)
+grid_radial <- expand.grid(BMICALC = x_range, PIZZANO = y_range)
+
+grid_predictions <- predict(svm_radial_2feat, grid_radial)
+grid_radial$Prediction <- as.factor(grid_predictions)
+
+decision_boundary_radial <- ggplot() +
+  geom_tile(data = grid_radial, aes(x = BMICALC, y = PIZZANO, fill = Prediction), alpha = 0.4) +
+  geom_contour(data = grid_radial, aes(x = BMICALC, y = PIZZANO, z = as.numeric(Prediction)), color = "black", breaks = 1.5) +
+  geom_point(data = train_data_two_features, aes(x = BMICALC, y = PIZZANO, color = as.factor(DIABETICEV)), size = 2) +
+  scale_fill_manual(values = c("skyblue", "lightpink")) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Radial SVM Decision Boundary (BMICALC vs PIZZANO)", x = "BMICALC", y = "PIZZANO", fill = "Predicted", color = "Actual") +
+  theme_minimal(base_size = 15)
+
+print(decision_boundary_radial)
+
+ggsave("DecisionBoundary_RadialSVM.png", plot = decision_boundary_radial, width = 8, height = 6, dpi = 300)
+```
+3. Polynomial model.
+
+```{r}
+# Tuning a polynomial kernel SVM model over different cost, degree, and coef0 values, selecting the best model,
+# and evaluating performance using accuracy, error rates, precision, recall, and confusion matrices
+cost_values <- c(0.01, 0.5, 5)
+degree_values <- c(2,3)
+coef0_values <- c(0, 2)
+
+tic("Tuning Polynomial Kernel SVM")
+
+set.seed(123)
+tune_out_poly <- tune.svm(
+  DIABETICEV ~ BMICALC + FRUTNO + SALADSNO + MOD10DMIN + HRSLEEP + PIZZANO + FRIESPNO,
+  data = train_data_down,
+  kernel = "polynomial",
+  cost = cost_values,
+  degree = degree_values,
+  coef0 = coef0_values,
+  scale = TRUE,
+  max.iter = 100000
+)
+
+toc(log = FALSE)
+
+summary(tune_out_poly)
+
+```
+
+
+```{r}
+# Evaluate the best polynomial SVM model by predicting on train and test data, calculating metrics, and displaying results
+
+best_poly_model <- tune_out_poly$best.model
+cat("Best Cost (Poly):", best_poly_model$cost, "\n")
+cat("Best Degree (Poly):", best_poly_model$degree, "\n")
+cat("Best Coef0 (Poly):", best_poly_model$coef0, "\n")
+
+train_pred_poly <- predict(best_poly_model, newdata = train_data_down)
+test_pred_poly <- predict(best_poly_model, newdata = test_data)
+
+train_cm_poly <- confusionMatrix(train_pred_poly, train_data_down$DIABETICEV)
+test_cm_poly <- confusionMatrix(test_pred_poly, test_data$DIABETICEV)
+
+train_error_poly <- 1 - train_cm_poly$overall['Accuracy']
+test_error_poly <- 1 - test_cm_poly$overall['Accuracy']
+
+cat("\n===== Polynomial SVM Results =====\n")
+cat("Train Accuracy:", train_cm_poly$overall['Accuracy'], "\n")
+cat("Test Accuracy:", test_cm_poly$overall['Accuracy'], "\n")
+cat("Train Error:", train_error_poly, "\n")
+cat("Test Error:", test_error_poly, "\n")
+cat("Test Precision:", test_cm_poly$byClass['Precision'], "\n")
+cat("Test Recall:", test_cm_poly$byClass['Recall'], "\n\n")
+
+cat("Train Confusion Matrix:\n")
+print(train_cm_poly$table)
+cat("\nTest Confusion Matrix:\n")
+print(test_cm_poly$table)
+
+```
+
+
+```{r}
+
+# Calculate feature importance for the best polynomial SVM model based on the mean absolute value of support vectors
+
+coefs <- best_poly_model$coefs
+SVs <- best_poly_model$SV
+
+feature_importance <- apply(abs(SVs), 2, mean)
+feature_importance <- feature_importance / sum(feature_importance)
+
+feature_importance_df <- data.frame(
+  Feature = colnames(SVs),
+  Importance = feature_importance
+)
+
+feature_importance_df <- feature_importance_df[order(-feature_importance_df$Importance), ]
+
+print(feature_importance_df)
+
+```
+
+
+```{r}
+ggplot(feature_importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Feature Importance (Polynomial SVM)",
+    x = "Feature",
+    y = "Importance"
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+# Train a polynomial kernel SVM model using two features, predict on a grid, and plot the decision boundary
+
+train_data_two_features <- train_data_down[, c("BMICALC", "PIZZANO", "DIABETICEV")]
+
+set.seed(123)
+svm_poly_2feat <- svm(
+  DIABETICEV ~ BMICALC + PIZZANO,
+  data = train_data_two_features,
+  kernel = "polynomial",
+  cost = 0.5,
+  degree = 3,
+  coef0 = 2,
+  scale = TRUE
+)
+
+x_range <- seq(min(train_data_two_features$BMICALC) - 1, max(train_data_two_features$BMICALC) + 1, length = 300)
+y_range <- seq(min(train_data_two_features$PIZZANO) - 1, max(train_data_two_features$PIZZANO) + 1, length = 300)
+grid_poly <- expand.grid(BMICALC = x_range, PIZZANO = y_range)
+
+grid_predictions_poly <- predict(svm_poly_2feat, grid_poly)
+grid_poly$Prediction <- as.factor(grid_predictions_poly)
+
+decision_boundary_poly <- ggplot() +
+  geom_tile(data = grid_poly, aes(x = BMICALC, y = PIZZANO, fill = Prediction), alpha = 0.4) +
+  geom_contour(data = grid_poly, aes(x = BMICALC, y = PIZZANO, z = as.numeric(Prediction)), color = "black", breaks = 1.5) +
+  geom_point(data = train_data_two_features, aes(x = BMICALC, y = PIZZANO, color = as.factor(DIABETICEV)), size = 2) +
+  scale_fill_manual(values = c("skyblue", "lightpink")) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Polynomial SVM Decision Boundary", x = "BMICALC", y = "PIZZANO", fill = "Predicted", color = "Actual") +
+  theme_minimal(base_size = 15)
+
+print(decision_boundary_poly)
+
+ggsave("DecisionBoundary_PolynomialSVM.png", plot = decision_boundary_poly, width = 8, height = 6, dpi = 300)
+```
+
+
+
+```{r}
+# Creating a summary table comparing Linear, Radial, and Polynomial SVM models
+# on training/testing accuracy, error rates, precision, and recall for performance evaluation
+results_df <- data.frame(
+  Model = c("Linear SVM", "Radial SVM", "Polynomial SVM"),
+  Train_Accuracy = c(
+    train_cm_linear$overall['Accuracy'],
+    train_cm_radial$overall['Accuracy'],
+    train_cm_poly$overall['Accuracy']
+  ),
+  Test_Accuracy = c(
+    test_cm_linear$overall['Accuracy'],
+    test_cm_radial$overall['Accuracy'],
+    test_cm_poly$overall['Accuracy']
+  ),
+  Train_Error = c(
+    train_error_linear,
+    train_error_radial,
+    train_error_poly
+  ),
+  Test_Error = c(
+    test_error_linear,
+    test_error_radial,
+    test_error_poly
+  ),
+  Precision = c(
+    test_cm_linear$byClass['Precision'],
+    test_cm_radial$byClass['Precision'],
+    test_cm_poly$byClass['Precision']
+  ),
+  Recall = c(
+    test_cm_linear$byClass['Recall'],
+    test_cm_radial$byClass['Recall'],
+    test_cm_poly$byClass['Recall']
+  )
+)
+
+print(results_df)
+
+```
+
+
+```{r}
+# Plotting the comparison of training and testing accuracy across Linear, Radial, and Polynomial SVM models
+results_long_accuracy <- pivot_longer(
+  results_df,
+  cols = c(Train_Accuracy, Test_Accuracy),
+  names_to = "Data_Type",
+  values_to = "Accuracy"
+)
+
+test_accuracy_plot <- ggplot(results_long_accuracy, aes(x = Model, y = Accuracy, fill = Data_Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7)) +
+  scale_fill_manual(values = c("Train_Accuracy" = "skyblue", "Test_Accuracy" = "orange")) +
+  labs(
+    title = "Train vs Test Accuracy Across Models",
+    y = "Accuracy",
+    fill = "Data Type"
+  ) +
+  theme_minimal()
+
+print(test_accuracy_plot)
+
+ggsave("Train_vs_Test_Accuracy_Across_Models.png", plot = test_accuracy_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+```{r}
+# Plotting the comparison of training and testing error rates across Linear, Radial, and Polynomial SVM models
+results_long_error <- pivot_longer(
+  results_df,
+  cols = c(Train_Error, Test_Error),
+  names_to = "Data_Type",
+  values_to = "Error"
+)
+
+error_metrics_model <- ggplot(results_long_error, aes(x = Model, y = Error, fill = Data_Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7)) +
+  scale_fill_manual(values = c("Train_Error" = "red", "Test_Error" = "blue")) +
+  labs(
+    title = "Train vs Test Error Across Models",
+    y = "Error Rate",
+    fill = "Data Type"
+  ) +
+  theme_minimal()
+
+print(error_metrics_model)
+
+ggsave("Train_vs_Test_Error_Across_Models.png", plot = error_metrics_model, width = 8, height = 6, dpi = 300)
+
+```
+
+
+
+
+```{r}
+# Plotting the comparison of Precision and Recall scores across Linear, Radial, and Polynomial SVM models
+results_long <- pivot_longer(
+  results_df,
+  cols = c(Precision, Recall),
+  names_to = "Metric",
+  values_to = "Value"
+)
+
+precision_recall_plot <- ggplot(results_long, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Precision and Recall across Models",
+    y = "Score"
+  ) +
+  scale_fill_manual(values = c("Precision" = "purple", "Recall" = "cyan4")) +
+  theme_minimal()
+
+print(precision_recall_plot)
+
+ggsave("Precision_and_Recall_Across_Models.png", plot = precision_recall_plot, width = 8, height = 6, dpi = 300)
+
+```
+
+
+```{r}
+# Plotting the Test Error for each model using a point and segment plot to clearly visualize performance
+test_error_comparison_plot <- ggplot(results_df, aes(x = Test_Error, y = Model)) +
+  geom_point(size = 5, color = "darkred") +
+  geom_segment(aes(x = 0, xend = Test_Error, y = Model, yend = Model), color = "pink") +
+  labs(
+    title = "Test Error Comparison",
+    x = "Test Error",
+    y = "Model"
+  ) +
+  theme_minimal()
+
+print(test_error_comparison_plot)
+
+ggsave("Test_Error_Comparison.png", plot = test_error_comparison_plot, width = 8, height = 6, dpi = 300)
+
+```
+
+With all the comparisons the linear model is performing well in the data.
